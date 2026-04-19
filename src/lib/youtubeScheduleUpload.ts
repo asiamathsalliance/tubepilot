@@ -7,6 +7,8 @@ export type ScheduleYoutubePayload = {
   /** UTC ISO string (RFC 3339) for YouTube `publishAt`. */
   publishAtIso: string
   isShort: boolean
+  /** Maps to YouTube `status.selfDeclaredMadeForKids`. */
+  selfDeclaredMadeForKids?: boolean
   thumbnailDataUrl?: string
   /** If set, server trims this range (seconds) from the uploaded file before YouTube insert. */
   trimStartSec?: number
@@ -27,6 +29,7 @@ export async function scheduleYoutubeUpload(
       categoryId: args.categoryId,
       publishAtIso: args.publishAtIso,
       isShort: args.isShort,
+      selfDeclaredMadeForKids: args.selfDeclaredMadeForKids === true,
       thumbnailDataUrl: args.thumbnailDataUrl,
       ...(args.trimStartSec != null && args.trimEndSec != null
         ? { trimStartSec: args.trimStartSec, trimEndSec: args.trimEndSec }

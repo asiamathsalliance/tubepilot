@@ -120,8 +120,7 @@ export function Dashboard() {
           Welcome Back, {displayName}!
         </h2>
         <p className="mt-2 max-w-xl text-base text-zinc-600 dark:text-zinc-400">
-          Pick up where you left off or start something new. Your projects and
-          workflow are below.
+          One place for every upload you have in flight.
         </p>
       </section>
 
@@ -172,7 +171,7 @@ export function Dashboard() {
                   Projects
                 </h1>
                 <p className="mt-2 text-base text-zinc-600 dark:text-zinc-400">
-                  Open a project to continue where you left off.
+                  Open a draft to resume or start a new pipeline from the top right.
                 </p>
               </div>
               <Link
@@ -227,6 +226,12 @@ export function Dashboard() {
                         </p>
                         <p className="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
                           Created {formatDate(p.createdAt)}
+                          {p.status === 'published' && p.publishedAt ? (
+                            <>
+                              {' '}
+                              · Published {formatDate(p.publishedAt)}
+                            </>
+                          ) : null}
                         </p>
                       </button>
                       <div className="flex shrink-0 flex-col items-end justify-center gap-2 sm:flex-row sm:items-center sm:gap-3">

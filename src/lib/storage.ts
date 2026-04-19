@@ -2,6 +2,9 @@ import type { Project } from '../types/project'
 
 export const STORAGE_KEY = 'clipfarm_projects'
 
+/** One-time replace of local projects with end-screen demo pair (channel + promo thumbs). */
+const ENDSCREEN_DEMO_SEED_KEY = 'clipfarm_endscreen_demo_v2'
+
 /** Per-project thumbnail data URL — kept out of localStorage to avoid quota errors. */
 const SESSION_THUMB_PREFIX = 'clipfarm_thumb_'
 
@@ -126,7 +129,40 @@ function migrateLocalStorageThumbnailsToSession(): void {
   }
 }
 
+function applyEndScreenDemoSeed(): void {
+  try {
+    if (localStorage.getItem(ENDSCREEN_DEMO_SEED_KEY)) return
+    const now = new Date().toISOString()
+    const projects: Project[] = [
+      {
+        id: 'clipfarm-demo-best-deck',
+        name: 'BEST DECK CYCLE 2025!',
+        title: 'BEST DECK CYCLE 2025!',
+        createdAt: now,
+        status: 'draft',
+        lastEditedStep: 'input',
+        endScreenPromoImage: '/endscreen/best-deck-cycle-2025.png',
+      },
+      {
+        id: 'clipfarm-demo-hack-avatar',
+        name: 'HACK AVATAR?? CLASH ROYALE 2025',
+        title: 'HACK AVATAR?? CLASH ROYALE 2025',
+        createdAt: now,
+        status: 'draft',
+        lastEditedStep: 'input',
+        endScreenPromoImage: '/endscreen/hack-avatar-clash-2025.png',
+      },
+    ]
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ projects }))
+    localStorage.setItem(ENDSCREEN_DEMO_SEED_KEY, '1')
+    window.dispatchEvent(new Event('clipfarm-storage'))
+  } catch (e) {
+    console.warn('clipfarm: end-screen demo seed skipped', e)
+  }
+}
+
 export function loadStore(): StoreShape {
+  applyEndScreenDemoSeed()
   migrateLocalStorageThumbnailsToSession()
   try {
     const raw = localStorage.getItem(STORAGE_KEY)

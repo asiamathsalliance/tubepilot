@@ -4,8 +4,6 @@ import { useProject } from '../hooks/useProject'
 import { useVideoPreview } from '../hooks/useVideoPreview'
 import clsx from 'clsx'
 
-const AGE_GROUPS = ['13–17', '18–24', '25–34', '35–44', '45+']
-
 function DeviceFrame({
   label,
   variant,
@@ -106,42 +104,51 @@ export function ReviewPage1() {
         Review — devices
       </h1>
       <p className="mt-3 max-w-3xl text-base text-zinc-600 dark:text-zinc-400 lg:text-lg">
-        Preview how your content may appear on different surfaces. Frames are scaled to feel like
-        each device class.
+        Cross-device preview of how your packshot and motion read before publish.
       </p>
 
-      <div className="mt-10 grid grid-cols-1 items-center justify-items-center gap-12 lg:grid-cols-3 lg:gap-8">
-        <DeviceFrame label="Phone" variant="mobile">
-          {preview}
-        </DeviceFrame>
-        <DeviceFrame label="Desktop" variant="desktop">
-          {preview}
-        </DeviceFrame>
-        <DeviceFrame label="TV" variant="tv">
-          {preview}
-        </DeviceFrame>
+      <div className="mt-10 flex flex-col items-center justify-center gap-12 lg:flex-row lg:items-center lg:justify-center">
+        <div className="flex flex-col items-center gap-10 sm:flex-row sm:items-center sm:justify-center sm:gap-6 lg:gap-5">
+          <div className="-translate-x-3 sm:-translate-x-5 lg:-translate-x-8">
+            <DeviceFrame label="Phone" variant="mobile">
+              {preview}
+            </DeviceFrame>
+          </div>
+          <DeviceFrame label="Desktop" variant="desktop">
+            {preview}
+          </DeviceFrame>
+        </div>
+        <div className="lg:ml-10 xl:ml-16">
+          <DeviceFrame label="TV" variant="tv">
+            {preview}
+          </DeviceFrame>
+        </div>
       </div>
 
       <div className="mx-auto mt-14 max-w-4xl">
         <div className="grid gap-8 sm:grid-cols-2 sm:gap-10 lg:gap-12">
           <div>
             <label htmlFor="audience" className="label-lg block">
-              Audience (age group)
+              Audience
             </label>
             <select
               id="audience"
-              value={project.audience ?? ''}
-              onChange={(e) => updateProject({ audience: e.target.value })}
+              value={project.audienceKind ?? ''}
+              onChange={(e) => {
+                const v = e.target.value
+                if (v === 'madeForKids' || v === 'notMadeForKids') {
+                  updateProject({ audienceKind: v })
+                } else {
+                  updateProject({ audienceKind: undefined })
+                }
+              }}
               className="input-field mt-3 text-zinc-900 dark:text-zinc-100"
             >
               <option value="" className="text-zinc-500">
                 Select…
               </option>
-              {AGE_GROUPS.map((a) => (
-                <option key={a} value={a}>
-                  {a}
-                </option>
-              ))}
+              <option value="madeForKids">Made for kids (family-friendly)</option>
+              <option value="notMadeForKids">Not made for kids (general / 18+)</option>
             </select>
           </div>
           <div>

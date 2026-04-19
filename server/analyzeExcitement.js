@@ -83,7 +83,14 @@ export async function analyzeExcitementFromVideoFile(videoPath) {
     windows: data.windows ?? [],
     meta: {
       windowSec: Number(data.windowSec) || 3,
-      weights: data.weights || { w1: 0.45, w2: 0.35, w3: 0.2 },
+      weights: {
+        w1: 0.28,
+        w2: 0.28,
+        w3: 0.14,
+        w4: 0.18,
+        w5: 0.12,
+        ...(data.weights && typeof data.weights === 'object' ? data.weights : {}),
+      },
     },
   }
 }

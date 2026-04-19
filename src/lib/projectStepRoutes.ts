@@ -1,3 +1,4 @@
+import { matchPath } from 'react-router-dom'
 import type { LastEditedStep } from '../types/project'
 
 /** Ordered workflow steps under `/projects/:id/:step`. */
@@ -10,13 +11,17 @@ export const PROJECT_STEPS: readonly LastEditedStep[] = [
   'review-2',
 ] as const
 
+/** Resolve workflow step from URL (handles trailing slash; uses router matching). */
 export function stepFromPathname(pathname: string): LastEditedStep | null {
-  const m = pathname.match(/\/projects\/[^/]+\/([^/?]+)/)
-  const seg = m?.[1]
-  if (!seg) return null
-  return PROJECT_STEPS.includes(seg as LastEditedStep)
-    ? (seg as LastEditedStep)
-    : null
+  const path = pathname.replace(/\/+$/, '') || '/'
+  for (const step of PROJECT_STEPS) {
+    const hit = matchPath(
+      { path: `/projects/:id/${step}`, end: true },
+      path,
+    )
+    if (hit) return step
+  }
+  return null
 }
 
 export function stepIndex(step: LastEditedStep): number {

@@ -2,7 +2,7 @@ import type { TimelineSegment } from '../types/project'
 
 export type ExcitementAnalysisMeta = {
   windowSec: number
-  weights: { w1: number; w2: number; w3: number }
+  weights: { w1: number; w2: number; w3: number; w4?: number; w5?: number }
   analyzedAt: string
   capped?: boolean
   fullDurationSec?: number

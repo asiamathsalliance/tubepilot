@@ -10,6 +10,7 @@ import {
   transcribeVideoOnly,
 } from '../lib/videoPipeline'
 import { YOUTUBE_CATEGORIES } from '../lib/youtubeCategories'
+import { canAdvanceFromStep } from '../lib/workflowStepComplete'
 import clsx from 'clsx'
 
 const REGIONS = [
@@ -168,6 +169,10 @@ export function Input() {
   function onSubmit(e: FormEvent) {
     e.preventDefault()
     if (!project) return
+    if (!canAdvanceFromStep('input', project, videoFile ?? null)) {
+      setStepWarning('Complete niche, YouTube category, and video upload before continuing.')
+      return
+    }
     setStepWarning(null)
     const missing: string[] = []
     if (!(project.niche ?? '').trim()) missing.push('niche')
@@ -218,7 +223,7 @@ export function Input() {
         Input
       </h1>
       <p className="mt-2 text-base text-zinc-600 dark:text-zinc-400">
-        Set niche, category, and upload your video.
+        Configure your upload and drop in the source file your workflow will use.
       </p>
 
       {stepWarning ? (
@@ -345,32 +350,25 @@ export function Input() {
         {previewUrl && videoFile ? (
           <div className="overflow-hidden rounded-xl border-2 border-zinc-300 dark:border-zinc-600">
             {waitingForPipeline && !pipelineError ? (
-              <div className="bg-zinc-950">
-                <div
-                  className={`w-full animate-pulse bg-gradient-to-br from-zinc-700 via-zinc-800 to-zinc-900 ${
-                    (project.videoLength ?? 'long') === 'short'
-                      ? 'aspect-[9/16] max-h-[min(480px,70vh)] mx-auto max-w-[min(100%,270px)]'
-                      : 'aspect-video'
-                  }`}
+              <div
+                className={clsx(
+                  'flex flex-col items-center justify-center gap-6 bg-black px-4',
+                  (project.videoLength ?? 'long') === 'short'
+                    ? 'mx-auto aspect-[9/16] max-h-[min(480px,70vh)] w-full max-w-[min(100%,270px)] min-h-[200px]'
+                    : 'aspect-video min-h-[180px] w-full',
+                )}
+              >
+                <span
+                  className="inline-block h-14 w-14 shrink-0 animate-spin rounded-full border-4 border-orange-400 border-t-transparent"
+                  aria-hidden
                 />
-                <div className="space-y-3 border-t border-zinc-800 bg-zinc-900/95 px-4 py-4">
-                  <div className="flex items-center gap-3">
-                    <span className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-orange-400 border-t-transparent" />
-                    <span className="text-sm font-medium text-zinc-200">
-                      {transcribeLoading
-                        ? 'Transcribing…'
-                        : 'Generating summary…'}
-                    </span>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="h-2.5 w-full animate-pulse rounded bg-zinc-700/80" />
-                    <div className="h-2.5 w-4/5 animate-pulse rounded bg-zinc-700/60" />
-                    <div className="h-2.5 w-3/5 animate-pulse rounded bg-zinc-700/40" />
-                  </div>
-                  <p className="text-xs text-zinc-500">
-                    Video preview appears when transcription and analysis finish.
-                  </p>
-                </div>
+                <p className="text-center text-base font-bold tracking-wide text-white">
+                  {transcribeLoading
+                    ? 'Transcribing…'
+                    : enrichLoading
+                      ? 'Analyzing content…'
+                      : 'Transcribing…'}
+                </p>
               </div>
             ) : pipelineError ? (
               <div className="bg-zinc-950 px-4 py-6">

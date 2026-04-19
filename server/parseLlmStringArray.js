@@ -1,6 +1,10 @@
 /**
  * Extract string arrays from messy LLM output (e.g. title:[ "a", tags:["x" ).
  */
+import {
+  shouldDropMetaOnlyLine,
+  stripLeadInFromCandidate,
+} from './stripLlmFluff.js'
 
 export function cleanArrayElement(s) {
   let x = String(s ?? '').trim()
@@ -55,6 +59,14 @@ function extractQuotedStrings(segment) {
   return out
 }
 
+function finalizeStrings(arr, max) {
+  if (!arr?.length) return []
+  return arr
+    .map((s) => stripLeadInFromCandidate(cleanArrayElement(String(s))))
+    .filter((s) => s.length > 1 && !shouldDropMetaOnlyLine(s))
+    .slice(0, max)
+}
+
 /**
  * @param {string} text
  * @param {number} max
@@ -69,6 +81,8 @@ export function extractStringArrayFromLlm(text, max = 40) {
   if (!t0.startsWith('[') && !t0.startsWith('{')) {
     raw = raw.replace(/^[\s\n]*[a-z0-9_]+\s*:\s*/i, '').trim()
   }
+
+  let out = []
 
   const start = raw.indexOf('[')
   if (start >= 0) {
@@ -88,26 +102,33 @@ export function extractStringArrayFromLlm(text, max = 40) {
     if (end > start) {
       const slice = raw.slice(start, end + 1)
       const got = tryParseJsonArray(slice, max)
-      if (got?.length) return got
-      const quoted = extractQuotedStrings(slice)
-      if (quoted.length) return quoted.slice(0, max)
+      if (got?.length) out = got
+      if (!out.length) {
+        const quoted = extractQuotedStrings(slice)
+        if (quoted.length) out = quoted.slice(0, max)
+      }
     }
   }
 
-  const whole = tryParseJsonArray(raw, max)
-  if (whole?.length) return whole
+  if (!out.length) {
+    const whole = tryParseJsonArray(raw, max)
+    if (whole?.length) out = whole
+  }
+  if (!out.length) {
+    const quotedAll = extractQuotedStrings(raw)
+    if (quotedAll.length) out = quotedAll.slice(0, max)
+  }
+  if (!out.length) {
+    out = raw
+      .split(/\n/)
+      .map((line) =>
+        line
+          .replace(/^[\s]*[-*•\d.)]+\s*/, '')
+          .trim(),
+      )
+      .map(cleanArrayElement)
+      .filter((line) => line.length > 1)
+  }
 
-  const quotedAll = extractQuotedStrings(raw)
-  if (quotedAll.length) return quotedAll.slice(0, max)
-
-  return raw
-    .split(/\n/)
-    .map((line) =>
-      line
-        .replace(/^[\s]*[-*•\d.)]+\s*/, '')
-        .trim(),
-    )
-    .map(cleanArrayElement)
-    .filter((line) => line.length > 1)
-    .slice(0, max)
+  return finalizeStrings(out, max)
 }

@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import {
+  Link,
+  useNavigate,
+  useOutletContext,
+  useParams,
+  useSearchParams,
+} from 'react-router-dom'
 import { useProject } from '../hooks/useProject'
 import { useVideoPreview } from '../hooks/useVideoPreview'
 import {
@@ -8,6 +14,7 @@ import {
 } from '../lib/australiaTime'
 import { projectStepPath } from '../lib/routes'
 import { getFarmPreviewSession, loadStore } from '../lib/storage'
+import { extractClipSegmentToFile } from '../lib/extractClipSegment'
 import { scheduleYoutubeUpload } from '../lib/youtubeScheduleUpload'
 import { formatSecRange } from '../lib/formatClipTime'
 import {
@@ -16,6 +23,25 @@ import {
 } from '../lib/recommendUploadDatesModel8Api'
 import { reviewOverviewScores } from '../lib/scores'
 import type { ClipFarmQueueEntry, TimelineSegment } from '../types/project'
+import type { ProjectWorkflowOutletContext } from '../components/layout/workflowOutletContext'
+import clsx from 'clsx'
+
+function PlusIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      className={className}
+      aria-hidden
+    >
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  )
+}
 
 const MIN_GENERATE_SPIN_MS = 650
 
@@ -37,8 +63,11 @@ type ScheduleState = {
 
 export function ReviewPage2() {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const highlightId = searchParams.get('highlight')
+  const { registerReview2Footer } =
+    useOutletContext<ProjectWorkflowOutletContext>()
   const { project, updateProject } = useProject(id)
   const { videoFile } = useVideoPreview(id)
   const [youtubeError, setYoutubeError] = useState<string | null>(null)
@@ -120,20 +149,20 @@ export function ReviewPage2() {
       assetId: string,
       atIso: string,
       clipEntry?: ClipFarmQueueEntry,
-    ) => {
+    ): Promise<boolean> => {
       if (!videoFile || !project || !id) {
         setYoutubeError(
           'Video file is missing. Go back to Input and select your MP4 again.',
         )
-        return
+        return false
       }
       const pubTime = new Date(atIso).getTime()
       if (Number.isNaN(pubTime) || pubTime <= Date.now()) {
         setYoutubeError('Scheduled time must be in the future (Australia/Sydney).')
-        return
+        return false
       }
       const prevRow = project.youtubeScheduledByAssetId?.[assetId]
-      if (prevRow?.videoId && prevRow.atIso === atIso) return
+      if (prevRow?.videoId && prevRow.atIso === atIso) return true
 
       setYoutubeUploading((m) => ({ ...m, [assetId]: true }))
       setYoutubeError(null)
@@ -151,6 +180,7 @@ export function ReviewPage2() {
             categoryId: project.youtubeCategoryId ?? 22,
             publishAtIso: atIso,
             isShort: project.videoLength === 'short',
+            selfDeclaredMadeForKids: project.audienceKind === 'madeForKids',
             thumbnailDataUrl: project.thumbnailDataUrl,
           })
           updateProject({
@@ -162,16 +192,22 @@ export function ReviewPage2() {
             youtubeScheduledUrl: url,
           })
         } else if (clipEntry) {
+          const clipFile = await extractClipSegmentToFile(
+            videoFile,
+            clipEntry.startSec,
+            clipEntry.endSec,
+          )
+          const isShort = project.videoLength === 'short'
           const { videoId, url } = await scheduleYoutubeUpload({
-            video: videoFile,
+            video: clipFile,
             title: `${project.title?.trim() || project.name || 'Clip'} — ${clipEntry.label}`,
             description: project.description ?? '',
-            tags: [...(project.viewerTags ?? []), 'Shorts'],
+            tags: project.viewerTags ?? [],
             categoryId: project.youtubeCategoryId ?? 22,
             publishAtIso: atIso,
-            isShort: true,
-            trimStartSec: clipEntry.startSec,
-            trimEndSec: clipEntry.endSec,
+            isShort,
+            selfDeclaredMadeForKids: project.audienceKind === 'madeForKids',
+            thumbnailDataUrl: project.thumbnailDataUrl,
           })
           updateProject({
             youtubeScheduledByAssetId: {
@@ -179,9 +215,13 @@ export function ReviewPage2() {
               [assetId]: { videoId, url, atIso },
             },
           })
+        } else {
+          return false
         }
+        return true
       } catch (e) {
         setYoutubeError(e instanceof Error ? e.message : String(e))
+        return false
       } finally {
         setYoutubeUploading((m) => ({ ...m, [assetId]: false }))
       }
@@ -214,7 +254,6 @@ export function ReviewPage2() {
           score100: rec.score100,
           estimatedViews: rec.estimatedViews,
         })
-        await runYoutubeScheduleUpload('main', rec.recommendedAt)
       }
     } catch (e) {
       console.error(e)
@@ -250,7 +289,6 @@ export function ReviewPage2() {
           score100: rec.score100,
           estimatedViews: rec.estimatedViews,
         })
-        await runYoutubeScheduleUpload(entry.id, rec.recommendedAt, entry)
       }
     } catch (e) {
       console.error(e)
@@ -279,15 +317,76 @@ export function ReviewPage2() {
         estimatedViews: res.estimatedViews,
       }
       persistSchedule(assetId, data)
-      const clipEntry =
-        assetId === 'main' ? undefined : farmQueue.find((e) => e.id === assetId)
-      await runYoutubeScheduleUpload(assetId, data.atIso, clipEntry)
     } catch (e) {
       console.error(e)
     } finally {
       setLoadingById((m) => ({ ...m, [assetId]: false }))
     }
   }
+
+  const confirmAndUploadAll = useCallback(async () => {
+    if (!videoFile || !project || !id) {
+      setYoutubeError(
+        'Video file is missing. Go back to Input and select your MP4 again.',
+      )
+      return
+    }
+    setYoutubeError(null)
+    let failed = false
+    const mainIso = schedules.main?.atIso
+    if (mainIso) {
+      const ok = await runYoutubeScheduleUpload('main', mainIso)
+      if (!ok) failed = true
+    }
+    for (const e of farmQueue) {
+      const iso = schedules[e.id]?.atIso
+      if (iso) {
+        const ok = await runYoutubeScheduleUpload(e.id, iso, e)
+        if (!ok) failed = true
+      }
+    }
+    if (!failed) {
+      updateProject({
+        status: 'published',
+        publishedAt: new Date().toISOString(),
+      })
+      navigate('/', { replace: true })
+    }
+  }, [
+    videoFile,
+    project,
+    id,
+    schedules,
+    farmQueue,
+    runYoutubeScheduleUpload,
+    navigate,
+    updateProject,
+  ])
+
+  const uploadingAny = useMemo(
+    () => Object.values(youtubeUploading).some(Boolean),
+    [youtubeUploading],
+  )
+
+  const canConfirmUpload = useMemo(() => {
+    const hasMain = Boolean(schedules.main?.atIso)
+    const hasClip = farmQueue.some((e) => Boolean(schedules[e.id]?.atIso))
+    return hasMain || hasClip
+  }, [schedules, farmQueue])
+
+  useEffect(() => {
+    registerReview2Footer({
+      onConfirm: confirmAndUploadAll,
+      disabled: uploadingAny || !canConfirmUpload || !videoFile,
+    })
+    return () => registerReview2Footer(null)
+  }, [
+    registerReview2Footer,
+    confirmAndUploadAll,
+    uploadingAny,
+    canConfirmUpload,
+    videoFile,
+  ])
 
   if (!id || !project) {
     return (
@@ -326,12 +425,11 @@ export function ReviewPage2() {
         Review & Publish
       </h1>
       <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-        Times use <strong>Australia / Sydney</strong>. Choosing a publish time uploads to YouTube
-        (private until the scheduled time).
+        Final scores and Australia/Sydney scheduling before YouTube receives your uploads.
       </p>
 
       <section className="mt-8 rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900/50">
-        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+        <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">
           Score Overview
         </h2>
         <dl className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -355,23 +453,23 @@ export function ReviewPage2() {
       </section>
 
       <section className="mt-10 border-t border-zinc-200 pt-10 dark:border-zinc-700">
-        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+        <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">
           Upload Schedule
         </h2>
-        <p className="mt-1 text-xs text-zinc-500">
-          One card for your main video and one per clip. Generate a suggested time or pick a date and
-          time; uploads start when the time is set.
+        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+          Recommend times or set them manually, then use <strong>Confirm and Upload</strong> in the
+          footer to send everything to YouTube (Australia/Sydney).
         </p>
 
-        <div className="mt-6 flex flex-wrap items-end justify-center gap-6">
-          <div
-            ref={(el) => {
-              cardRefs.current.main = el
-            }}
-            className={clsxFloating(highlightId === 'main')}
-          >
+        <div className="mt-6 flex w-full min-w-0 flex-nowrap items-stretch justify-center gap-4 overflow-x-auto py-2">
             <div
-              className="aspect-square w-full max-w-[220px] overflow-hidden rounded-lg border border-zinc-200 bg-zinc-100 bg-cover bg-center dark:border-zinc-600 dark:bg-zinc-800"
+              ref={(el) => {
+                cardRefs.current.main = el
+              }}
+              className={clsxFloating(highlightId === 'main')}
+            >
+            <div
+              className="aspect-square w-full max-w-[280px] overflow-hidden rounded-lg border border-zinc-200 bg-zinc-100 bg-cover bg-center dark:border-zinc-600 dark:bg-zinc-800"
               style={
                 mainThumb ? { backgroundImage: `url(${mainThumb})` } : undefined
               }
@@ -382,11 +480,14 @@ export function ReviewPage2() {
                 </div>
               ) : null}
             </div>
-            <p className="mt-2 line-clamp-2 text-sm font-medium text-zinc-900 dark:text-zinc-50">
+            <p
+              className="mt-2 min-h-[1.25rem] truncate text-sm font-medium leading-tight text-zinc-900 dark:text-zinc-50"
+              title={mainTitle}
+            >
               {mainTitle}
             </p>
             <p className="text-[10px] text-zinc-500">Main video</p>
-            <div className="mt-3 space-y-2">
+            <div className="mt-auto space-y-2 pt-3">
               <label className="block text-[10px] font-medium uppercase text-zinc-500">
                 Publish time (Australia/Sydney)
               </label>
@@ -412,10 +513,10 @@ export function ReviewPage2() {
                 {loadingById.main ? (
                   <>
                     <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                    Generating…
+                    Recommending…
                   </>
                 ) : (
-                  'Generate upload date & time'
+                  'Recommend upload date & time'
                 )}
               </button>
               {youtubeUploading.main ? (
@@ -432,20 +533,7 @@ export function ReviewPage2() {
                 </a>
               ) : null}
             </div>
-          </div>
-
-          <div className="flex flex-col items-center justify-center self-center">
-            <Link
-              to={projectStepPath(project.id, 'editor')}
-              title="Add clip farm"
-              className="inline-flex h-12 w-12 items-center justify-center rounded-full border-2 border-orange-500 bg-orange-50 text-orange-700 shadow-sm transition hover:ring-2 hover:ring-orange-400 hover:shadow-md dark:border-orange-600 dark:bg-orange-950/50 dark:text-orange-300 dark:hover:ring-orange-500"
-            >
-              <span className="text-2xl font-light leading-none">+</span>
-            </Link>
-            <span className="mt-2 text-center text-[10px] font-medium uppercase tracking-wide text-zinc-500">
-              Clip farm
-            </span>
-          </div>
+            </div>
 
           {farmQueue.map((entry) => {
             const prev = getFarmPreviewSession(project.id, entry.id)
@@ -458,10 +546,18 @@ export function ReviewPage2() {
                 ref={(el) => {
                   cardRefs.current[entry.id] = el
                 }}
-                className={clsxFloating(isHi)}
+                className={clsx(clsxFloating(isHi), 'relative')}
               >
+                <button
+                  type="button"
+                  aria-label="Remove from clip farm"
+                  onClick={() => removeFarmEntry(entry.id)}
+                  className="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-md bg-zinc-900/80 text-lg font-medium leading-none text-white shadow hover:bg-zinc-800 dark:bg-zinc-950/90"
+                >
+                  −
+                </button>
                 <div
-                  className="aspect-square w-full max-w-[220px] overflow-hidden rounded-lg border border-zinc-200 bg-zinc-100 bg-cover bg-center dark:border-zinc-600 dark:bg-zinc-800"
+                  className="aspect-square w-full max-w-[280px] overflow-hidden rounded-lg border border-zinc-200 bg-zinc-100 bg-cover bg-center dark:border-zinc-600 dark:bg-zinc-800"
                   style={prev ? { backgroundImage: `url(${prev})` } : undefined}
                 >
                   {!prev ? (
@@ -470,13 +566,16 @@ export function ReviewPage2() {
                     </div>
                   ) : null}
                 </div>
-                <p className="mt-2 line-clamp-2 text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                <p
+                  className="mt-2 min-h-[1.25rem] truncate text-sm font-medium leading-tight text-zinc-900 dark:text-zinc-50"
+                  title={entry.label}
+                >
                   {entry.label}
                 </p>
                 <p className="text-[10px] tabular-nums text-zinc-500">
                   {formatSecRange(entry.startSec, entry.endSec)}
                 </p>
-                <div className="mt-3 space-y-2">
+                <div className="mt-auto space-y-2 pt-3">
                   <label className="block text-[10px] font-medium uppercase text-zinc-500">
                     Publish time (Australia/Sydney)
                   </label>
@@ -500,10 +599,10 @@ export function ReviewPage2() {
                     {loadingById[entry.id] ? (
                       <>
                         <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                        Generating…
+                        Recommending…
                       </>
                     ) : (
-                      'Generate upload date & time'
+                      'Recommend upload date & time'
                     )}
                   </button>
                   {youtubeUploading[entry.id] ? (
@@ -519,17 +618,20 @@ export function ReviewPage2() {
                       Scheduled on YouTube
                     </a>
                   ) : null}
-                  <button
-                    type="button"
-                    onClick={() => removeFarmEntry(entry.id)}
-                    className="w-full rounded-lg border border-zinc-300 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
-                  >
-                    Remove from Clip farm
-                  </button>
                 </div>
               </div>
             )
           })}
+
+          <div className="flex min-h-[32rem] shrink-0 items-center justify-center self-stretch">
+            <Link
+              to={projectStepPath(project.id, 'editor')}
+              title="Add clips from the editor"
+              className="inline-flex items-center justify-center text-orange-600 transition hover:text-orange-500 dark:text-orange-400 dark:hover:text-orange-300"
+            >
+              <PlusIcon className="h-9 w-9" />
+            </Link>
+          </div>
         </div>
 
         {youtubeError ? (
@@ -550,7 +652,7 @@ export function ReviewPage2() {
 
 function clsxFloating(highlight: boolean) {
   return [
-    'w-full max-w-[240px] rounded-xl border bg-white p-4 shadow-lg dark:border-zinc-700 dark:bg-zinc-900/90',
+    'flex h-full min-h-[32rem] w-full min-w-[260px] max-w-[320px] shrink-0 flex-col rounded-xl border bg-white p-4 shadow-lg dark:border-zinc-700 dark:bg-zinc-900/90',
     highlight ? 'ring-2 ring-orange-500 ring-offset-2 dark:ring-offset-zinc-950' : '',
   ]
     .filter(Boolean)

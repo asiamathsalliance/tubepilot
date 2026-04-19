@@ -20,7 +20,7 @@ export default function App() {
           <Route element={<AppShell />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/projects/new" element={<StartNewProject />} />
-            <Route path="/projects/:id" element={<ProjectWorkflowLayout />}>
+            <Route path="/projects/:id/*" element={<ProjectWorkflowLayout />}>
               <Route path="input" element={<Input />} />
               <Route path="video-info" element={<VideoBasicInfo />} />
               <Route path="end-screen" element={<EndScreen />} />

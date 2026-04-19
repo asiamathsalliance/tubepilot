@@ -518,9 +518,7 @@ export function VideoBasicInfo() {
         Video Basic Info
       </h1>
       <p className="mt-2 text-base text-zinc-600 dark:text-zinc-400">
-        Select <strong>Title</strong>, <strong>Viewer Tags</strong>,{' '}
-        <strong>Description</strong>, or <strong>Thumbnail</strong> on the left to
-        open suggestions on the right. Your overall score stays at the top.
+        Your metadata, scores, and model suggestions in one focused layout.
       </p>
 
       <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(340px,480px)] lg:items-start">

@@ -39,7 +39,7 @@ export function StartNewProject() {
         Start New Project
       </h1>
       <p className="mt-2 text-base text-zinc-600 dark:text-zinc-400">
-        Name your project, then continue to upload and configure your video.
+        Name the workspace; the rest of the workflow attaches to it.
       </p>
       <form onSubmit={handleSubmit} className="mt-8 space-y-5">
         <div>

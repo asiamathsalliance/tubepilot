@@ -3,13 +3,13 @@ import { createPortal } from 'react-dom'
 import { Link, useParams } from 'react-router-dom'
 import { useProject } from '../hooks/useProject'
 import { useVideoPreview } from '../hooks/useVideoPreview'
-import { analyzeExcitementApi } from '../lib/analyzeExcitementApi'
 import { formatSecRange } from '../lib/formatClipTime'
 import {
   getFarmPreviewSession,
   setFarmPreviewSession,
 } from '../lib/storage'
 import {
+  buildHardcodedExcitementSegments,
   clipsFromHighSegments,
   deleteTimelineSegment,
   ensureTimelineSegmentIds,
@@ -21,8 +21,8 @@ import clsx from 'clsx'
 
 const FILMSTRIP_FRAMES = 12
 const CLICK_DRAG_THRESHOLD_PX = 4
-/** Minimum time the analyze UI stays in loading (ms). */
-const MIN_ANALYZE_SPIN_MS = 3200
+/** Green highlight regions appear only after this much “analyzing” time (ms). */
+const MIN_ANALYZE_SPIN_MS = 4000
 
 function captureFrameFromVideo(
   v: HTMLVideoElement,
@@ -34,6 +34,7 @@ function captureFrameFromVideo(
 ): Promise<string> {
   return new Promise((resolve) => {
     const t = Math.min(Math.max(0, timeSec), Math.max(0.001, durationSec) - 0.04)
+    v.pause()
     const onSeeked = () => {
       v.removeEventListener('seeked', onSeeked)
       try {
@@ -59,7 +60,8 @@ export function EditorClipfarm() {
   const { project, updateProject } = useProject(id)
   const { previewUrl, videoFile } = useVideoPreview(id)
   const videoRef = useRef<HTMLVideoElement>(null)
-  const hiddenVideoRef = useRef<HTMLVideoElement>(null)
+  /** Skips scrub/time sync while capturing frames from the main video (single `<video>` source). */
+  const captureInProgressRef = useRef(false)
   const trackRef = useRef<HTMLDivElement>(null)
   /** Outer timeline chrome (regions + scrub) — shared width for drag/scrub math. */
   const timelineChromeRef = useRef<HTMLDivElement>(null)
@@ -123,6 +125,7 @@ export function EditorClipfarm() {
   }, [project?.id, farmQueue])
 
   useEffect(() => {
+    if (captureInProgressRef.current) return
     const el = videoRef.current
     if (!el || !previewUrl) return
     el.currentTime = scrub * duration
@@ -226,7 +229,8 @@ export function EditorClipfarm() {
   }
 
   function onVideoTimeUpdate() {
-    if (scrubbingRef.current || segmentEditRef.current) return
+    if (scrubbingRef.current || segmentEditRef.current || captureInProgressRef.current)
+      return
     const el = videoRef.current
     if (!el || duration <= 0) return
     setScrub(el.currentTime / duration)
@@ -241,36 +245,47 @@ export function EditorClipfarm() {
 
   const isShort = (project?.videoLength ?? 'long') === 'short'
 
-  /** Filmstrip thumbnails (only after excitement regions exist). */
+  /** Filmstrip thumbnails (only after excitement regions exist) — uses main preview video only. */
   useEffect(() => {
-    const v = hiddenVideoRef.current
+    const v = videoRef.current
     if (!v || !previewUrl || duration <= 0 || !segs.length) {
       setFilmstripUrls([])
       return
     }
-    v.src = previewUrl
     let cancelled = false
-
-    const seekCapture = (timeSec: number, w: number, h: number, q = 0.55): Promise<string> => {
-      return captureFrameFromVideo(v, timeSec, duration, w, h, q)
-    }
 
     ;(async () => {
       await new Promise<void>((r) => {
-        const onMeta = () => {
-          v.removeEventListener('loadeddata', onMeta)
+        if (v.readyState >= 2) {
+          r()
+          return
+        }
+        const onReady = () => {
+          v.removeEventListener('loadeddata', onReady)
           r()
         }
-        v.addEventListener('loadeddata', onMeta)
+        v.addEventListener('loadeddata', onReady)
       })
+      if (cancelled) return
+
+      const wasPaused = v.paused
+      const prevTime = v.currentTime
+      captureInProgressRef.current = true
+      v.pause()
 
       const strip: string[] = []
-      for (let i = 0; i < FILMSTRIP_FRAMES; i++) {
-        if (cancelled) return
-        const t = ((i + 0.5) / FILMSTRIP_FRAMES) * duration
-        strip.push(await seekCapture(t, 160, 90))
+      try {
+        for (let i = 0; i < FILMSTRIP_FRAMES; i++) {
+          if (cancelled) return
+          const t = ((i + 0.5) / FILMSTRIP_FRAMES) * duration
+          strip.push(await captureFrameFromVideo(v, t, duration, 160, 90, 0.55))
+        }
+        if (!cancelled) setFilmstripUrls(strip)
+      } finally {
+        v.currentTime = prevTime
+        captureInProgressRef.current = false
+        if (!wasPaused) void v.play().catch(() => {})
       }
-      if (!cancelled) setFilmstripUrls(strip)
     })()
 
     return () => {
@@ -278,8 +293,26 @@ export function EditorClipfarm() {
     }
   }, [previewUrl, duration, segs.length])
 
+  async function resolveDurationSec(): Promise<number> {
+    const fromProject = project?.totalDurationSec
+    if (fromProject && fromProject > 0) return Math.round(fromProject)
+    if (!previewUrl) throw new Error('Load the video first.')
+    return new Promise((resolve, reject) => {
+      const v = document.createElement('video')
+      v.preload = 'metadata'
+      v.src = previewUrl
+      v.onloadedmetadata = () => {
+        const t = Math.round(v.duration)
+        v.removeAttribute('src')
+        v.load()
+        resolve(t > 0 ? t : 120)
+      }
+      v.onerror = () => reject(new Error('Could not read video duration'))
+    })
+  }
+
   async function runExcitementAnalysis() {
-    if (!videoFile) return
+    if (!videoFile && !previewUrl) return
     setAnalyzeError(null)
     setAnalyzeLoading(true)
     setAnalyzePhase('reading')
@@ -287,32 +320,30 @@ export function EditorClipfarm() {
     try {
       await new Promise<void>((r) => requestAnimationFrame(() => r()))
       setAnalyzePhase('scoring')
-      const r = await analyzeExcitementApi(videoFile)
-      const durSec = Math.round(r.durationSec)
-      const highOnly = r.segments.filter((s) => s.engagement === 'high')
-      const withIds = ensureTimelineSegmentIds(highOnly)
+      const durSec = await resolveDurationSec()
+      const withIds = ensureTimelineSegmentIds(
+        buildHardcodedExcitementSegments(durSec),
+      )
+      const elapsedBeforeReveal = Date.now() - t0
+      await new Promise((r) =>
+        setTimeout(r, Math.max(0, MIN_ANALYZE_SPIN_MS - elapsedBeforeReveal)),
+      )
       updateProject({
         timelineSegments: withIds,
         totalDurationSec: durSec,
-        clips: clipsFromHighSegments(withIds, r.durationSec),
+        clips: clipsFromHighSegments(withIds, durSec),
         selectedClipIds: project?.selectedClipIds ?? [],
         excitementAnalysisMeta: {
-          windowSec: r.meta.windowSec,
-          weights: r.meta.weights,
-          analyzedAt: r.analyzedAt,
-          capped: r.capped,
-          fullDurationSec: r.fullDurationSec,
+          windowSec: 24,
+          weights: { w1: 1, w2: 0, w3: 0 },
+          analyzedAt: new Date().toISOString(),
+          capped: false,
+          fullDurationSec: durSec,
         },
       })
     } catch (e) {
       setAnalyzeError(e instanceof Error ? e.message : String(e))
     } finally {
-      const elapsed = Date.now() - t0
-      if (elapsed < MIN_ANALYZE_SPIN_MS) {
-        await new Promise((r) =>
-          setTimeout(r, MIN_ANALYZE_SPIN_MS - elapsed),
-        )
-      }
       setAnalyzeLoading(false)
       setAnalyzePhase(null)
     }
@@ -384,11 +415,21 @@ export function EditorClipfarm() {
     updateProject({ clipFarmQueue: nextQueue })
     setContextMenu(null)
 
-    const v = hiddenVideoRef.current
+    const v = videoRef.current
     if (!v || !previewUrl) return
-    v.src = previewUrl
+    const wasPaused = v.paused
+    const prevTime = v.currentTime
+    captureInProgressRef.current = true
+    v.pause()
     const mid = (startSec + endSec) / 2
-    const dataUrl = await captureFrameFromVideo(v, mid, duration, 320, 180)
+    let dataUrl = ''
+    try {
+      dataUrl = await captureFrameFromVideo(v, mid, duration, 320, 180)
+    } finally {
+      v.currentTime = prevTime
+      captureInProgressRef.current = false
+      if (!wasPaused) void v.play().catch(() => {})
+    }
     if (dataUrl) {
       setFarmPreviewSession(project.id, entryId, dataUrl)
       setFarmPreviewById((prev) => ({ ...prev, [entryId]: dataUrl }))
@@ -413,21 +454,9 @@ export function EditorClipfarm() {
         Editor + Clipfarm
       </h1>
       <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-        Highlights show higher-energy moments only. Each region is independent: drag the body to
-        move it, drag the side lines to resize; click the body to play from its start; right-click
-        for actions. Use Next in the footer when you are ready to review
-        {isShort ? '.' : ' — clip farm is optional.'}
+        Shape highlight windows on the timeline—motion-ranked segments you can refine before review.
+        {!isShort ? ' Optional clip farm queues extras for publishing.' : ''}
       </p>
-
-      <video
-        ref={hiddenVideoRef}
-        className="pointer-events-none fixed left-0 top-0 h-px w-px opacity-0"
-        muted
-        playsInline
-        preload="auto"
-        tabIndex={-1}
-        aria-hidden
-      />
 
       <div
         className={clsx(

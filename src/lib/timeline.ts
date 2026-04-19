@@ -84,6 +84,60 @@ export function deleteTimelineSegment(segments: TimelineSegment[], index: number
   return segments.filter((_, i) => i !== index)
 }
 
+function rangesOverlap(
+  a: { start: number; end: number },
+  b: { start: number; end: number },
+): boolean {
+  return !(a.end <= b.start || a.start >= b.end)
+}
+
+function randBetween(rng: () => number, lo: number, hi: number) {
+  return lo + rng() * (hi - lo)
+}
+
+/**
+ * Up to 3 high-excitement regions: fixed 1:09→1:33 (69s–93s), plus two non-overlapping
+ * windows of random length 10–15s elsewhere (for the rest of the timeline).
+ */
+export function buildHardcodedExcitementSegments(
+  durationSec: number,
+  rng: () => number = Math.random,
+): TimelineSegment[] {
+  const D = Math.max(1, durationSec)
+  // 1:09 → 1:33
+  let s1 = 69
+  let e1 = 93
+  if (e1 > D) {
+    e1 = D
+    s1 = Math.max(0, e1 - 24)
+  }
+  if (s1 >= e1 - 0.05) {
+    s1 = 0
+    e1 = Math.min(D, Math.max(s1 + 10, D * 0.25))
+  }
+  const regions: { start: number; end: number }[] = [{ start: s1, end: e1 }]
+
+  const overlapsAny = (r: { start: number; end: number }) =>
+    regions.some((x) => rangesOverlap(x, r))
+
+  for (let attempt = 0; attempt < 50 && regions.length < 3; attempt++) {
+    const len = randBetween(rng, 10, 15)
+    const start = randBetween(rng, 0, Math.max(0, D - len))
+    const end = Math.min(D, start + len)
+    if (end <= start + 0.05) continue
+    const cand = { start, end }
+    if (!overlapsAny(cand)) regions.push(cand)
+  }
+
+  regions.sort((a, b) => a.start - b.start)
+  return regions.map((r) => ({
+    id: crypto.randomUUID(),
+    start: r.start / D,
+    end: r.end / D,
+    engagement: 'high' as const,
+  }))
+}
+
 export function clipsFromHighSegments(
   segments: TimelineSegment[],
   durationSec: number,

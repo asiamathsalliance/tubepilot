@@ -186,10 +186,13 @@ export interface Project {
 
   endScreen?: EndScreenLayout
 
+  /** Static image for end-screen rectangles (e.g. `/endscreen/promo.png`). */
+  endScreenPromoImage?: string
+
   /** Model 5/6 excitement run metadata (small JSON; segments stay in timelineSegments). */
   excitementAnalysisMeta?: {
     windowSec: number
-    weights: { w1: number; w2: number; w3: number }
+    weights: { w1: number; w2: number; w3: number; w4?: number; w5?: number }
     analyzedAt: string
     capped?: boolean
     fullDurationSec?: number
@@ -215,7 +218,10 @@ export interface Project {
   clips?: ClipItem[]
   selectedClipIds?: string[]
 
+  /** @deprecated legacy free-text audience; prefer audienceKind */
   audience?: string
+  /** COPPA-style audience for review + YouTube `selfDeclaredMadeForKids`. */
+  audienceKind?: 'madeForKids' | 'notMadeForKids'
   visibility?: 'public' | 'unlisted'
 
   publishDate?: string

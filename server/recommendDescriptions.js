@@ -4,6 +4,7 @@
 import { loadArtifact } from './scoreTitle.js'
 import { getLlmTrendContextForCategory } from './enrichContext.js'
 import { fetchTranscriptContentSummary } from './transcriptSummaryOllama.js'
+import { stripLeadInFromCandidate } from './stripLlmFluff.js'
 
 const OLLAMA_URL = (process.env.OLLAMA_URL || 'http://127.0.0.1:11434').replace(
   /\/$/,
@@ -263,7 +264,7 @@ export function stripJsonArrayNoise(line) {
 }
 
 function clampDescriptionLine(s, maxLen = 520) {
-  let t = String(s).trim()
+  let t = stripLeadInFromCandidate(String(s).trim())
   if (t.length <= maxLen) return t
   const cut = t.slice(0, maxLen)
   const lastPeriod = cut.lastIndexOf('.')
@@ -283,8 +284,11 @@ export function stripLlmDescriptionPreamble(raw) {
         )) ||
       /^these\s+(are|were)\b/i.test(L) ||
       (/^in\s+this\s+(video|section|description)\b/i.test(L) &&
-        /\b(here|below|following)\b/i.test(L))
-    if (throat && L.length < 220) {
+        /\b(here|below|following)\b/i.test(L)) ||
+      (/^here\s+is\s+(a\s+)?(possible\s+)?/i.test(L) &&
+        /\b(description|paragraph|option|version|text)\b/i.test(L) &&
+        L.length < 320)
+    if (throat && L.length < 400) {
       lines.shift()
     } else {
       break
@@ -296,7 +300,16 @@ export function stripLlmDescriptionPreamble(raw) {
 function isBoilerplateDescriptionLine(line) {
   const t = String(line).trim()
   if (t.length < 12) return true
-  return /^(here|below)\s+(are|is)\b/i.test(t) || /^these are\b/i.test(t)
+  if (/^(here|below)\s+(are|is)\b/i.test(t) || /^these are\b/i.test(t)) {
+    return true
+  }
+  if (
+    /^here\s+is\s+(a\s+)?(possible\s+)?/i.test(t) &&
+    /\b(description|paragraph|option|text|version)\b/i.test(t)
+  ) {
+    return true
+  }
+  return false
 }
 
 /** Prefer plain lines — no JSON array in model output. */
@@ -449,7 +462,13 @@ ${summary.slice(0, 4000)}
       )
     }
   }
-  candidates = [...new Set(candidates.map((s) => s.trim()).filter(Boolean))].slice(0, 4)
+  candidates = [
+    ...new Set(
+      candidates
+        .map((s) => stripLeadInFromCandidate(s.trim()))
+        .filter(Boolean),
+    ),
+  ].slice(0, 4)
 
   const scored = candidates.map((text) => ({
     text,

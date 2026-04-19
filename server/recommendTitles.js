@@ -8,6 +8,7 @@ import {
 } from './enrichContext.js'
 import { loadArtifact, scoreTitle } from './scoreTitle.js'
 import { fetchTranscriptContentSummary } from './transcriptSummaryOllama.js'
+import { TITLE_FORMAT_LLM_BLOCK } from './titleFormatPromptBlock.js'
 
 const OLLAMA_URL = (process.env.OLLAMA_URL || 'http://127.0.0.1:11434').replace(
   /\/$/,
@@ -192,6 +193,8 @@ ${examplesBlock}
 
 Generic structural patterns to mix: ${patternExamples}
 
+${TITLE_FORMAT_LLM_BLOCK}
+
 Transcript excerpt (fact-check / proper nouns only — if summary and transcript disagree on a fact, prefer the summary):
 ---
 ${transcript.slice(0, 8000)}
@@ -199,8 +202,10 @@ ${transcript.slice(0, 8000)}
 
 Generate exactly 12–15 distinct English video titles that:
 1. Describe the real content from the CONTENT SUMMARY (not generic dataset topics).
-2. Borrow only *structure* from dataset examples and trend blocks (hook type, length, punctuation style).
-3. Stay concise and compelling.
+2. Cover several of the TITLE FORMAT archetypes above (vary patterns across titles).
+3. Each title must be at most 10 words (count words; shorter is fine).
+4. Borrow only *structure* from dataset examples and trend blocks (hook type, length, punctuation style).
+5. Stay concise and compelling.
 
 Respond with ONLY a JSON array of strings: no markdown, no property names, no "title:" prefix — just the array. Example: ["Title one", "Title two"]`
 

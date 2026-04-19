@@ -235,8 +235,7 @@ export function EndScreen() {
         End screen
       </h1>
       <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-        Drag the logo and two video cards. Click a rectangle, then pick another project on
-        the right to show its title and link.
+        Brand mark plus two link tiles you place and bind to any project.
       </p>
 
       <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_320px]">
@@ -259,6 +258,16 @@ export function EndScreen() {
               const selected =
                 (index === 0 && layout.activeSlot === 'r0') ||
                 (index === 1 && layout.activeSlot === 'r1')
+              const pathOrPromo =
+                linked?.endScreenPromoImage ||
+                (linked?.thumbnailDataUrl?.startsWith('/')
+                  ? linked.thumbnailDataUrl
+                  : undefined)
+              const dataThumb =
+                linked?.thumbnailDataUrl?.startsWith('data:')
+                  ? linked.thumbnailDataUrl
+                  : undefined
+              const slotImageSrc = pathOrPromo || dataThumb
 
               return (
                 <button
@@ -272,15 +281,24 @@ export function EndScreen() {
                     height: `${r.height}%`,
                   }}
                   className={clsx(
-                    'absolute flex cursor-grab touch-none items-center justify-center rounded-lg border-2 px-2 text-center shadow-lg transition-[box-shadow,background-color,border-color] duration-200 active:cursor-grabbing',
+                    'absolute flex cursor-grab touch-none items-center justify-center overflow-hidden rounded-lg border-2 px-2 text-center shadow-lg transition-[box-shadow,background-color,border-color] duration-200 active:cursor-grabbing',
                     selected
                       ? 'border-orange-400 bg-orange-950/50 shadow-[0_12px_40px_-8px_rgba(234,88,12,0.45)] ring-2 ring-orange-500/40'
                       : 'border-white/35 bg-black/45 hover:border-orange-400/85 hover:bg-black/55 hover:shadow-[0_16px_48px_-12px_rgba(234,88,12,0.5)] hover:shadow-orange-600/40',
                   )}
                 >
-                  <span className="line-clamp-3 text-sm font-medium leading-tight text-white">
-                    {label}
-                  </span>
+                  {linked && slotImageSrc ? (
+                    <img
+                      src={slotImageSrc}
+                      alt=""
+                      className="h-full w-full object-cover"
+                      draggable={false}
+                    />
+                  ) : (
+                    <span className="line-clamp-3 text-sm font-medium leading-tight text-white">
+                      {label}
+                    </span>
+                  )}
                 </button>
               )
             })}
@@ -305,16 +323,16 @@ export function EndScreen() {
               )}
             >
               <img
-                src="/favicon.svg"
+                src="/endscreen/channel-avatar.png"
                 alt=""
-                className="h-full w-full origin-center scale-[0.62] object-contain p-1"
+                className="h-full w-full object-cover"
                 draggable={false}
               />
             </div>
           </div>
           <p className="mt-2 text-xs text-zinc-500">
-            Logo uses the app favicon for now. Drag elements to reposition; click a
-            rectangle to choose a linked project.
+            Drag elements to reposition; link a project to each slot — the thumbnail
+            stays visible in the rectangle.
           </p>
         </div>
 

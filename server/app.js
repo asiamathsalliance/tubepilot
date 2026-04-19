@@ -10,6 +10,7 @@ import { execFile } from 'child_process'
 import { promisify } from 'util'
 import fs from 'fs/promises'
 import path from 'path'
+import { fileURLToPath } from 'url'
 import os from 'os'
 import { scoreTitleFromFile, loadArtifact, getArtifactPath } from './scoreTitle.js'
 import { scoreTagConfidenceFromFile } from './scoreTitle.js'
@@ -42,10 +43,21 @@ import {
 } from './recommendUploadDatesModel8.js'
 import { loadYoutubeEnv } from './loadYoutubeEnv.js'
 import { createYoutubeFromRefreshToken } from './lib/youtubeClient.js'
+import {
+  getYoutubeCategoryIdSet,
+  normalizeSnippetCategoryId,
+} from './youtubeCategoryIds.js'
+import { TITLE_FORMAT_LLM_BLOCK } from './titleFormatPromptBlock.js'
+import {
+  shouldDropMetaOnlyLine,
+  stripLeadInFromCandidate,
+} from './stripLlmFluff.js'
 
 loadYoutubeEnv()
 
 const execFileAsync = promisify(execFile)
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const CLIP_EXPORT_DIR = path.join(__dirname, '..', 'data', 'raw', 'clips')
 
 const OLLAMA_URL = (process.env.OLLAMA_URL || 'http://127.0.0.1:11434').replace(
   /\/$/,
@@ -58,7 +70,11 @@ const WHISPER_MODEL = process.env.WHISPER_MODEL || 'base'
 
 const uploadFrame = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024 },
+  limits: {
+    fileSize: 25 * 1024 * 1024,
+    /** Base64 thumbnail in JSON metadata can exceed busboy’s default ~1MB field cap */
+    fieldSize: 52 * 1024 * 1024,
+  },
 })
 
 const upload = multer({
@@ -72,7 +88,10 @@ const upload = multer({
       cb(null, safe)
     },
   }),
-  limits: { fileSize: 1024 * 1024 * 1024 },
+  limits: {
+    fileSize: 1024 * 1024 * 1024,
+    fieldSize: 52 * 1024 * 1024,
+  },
 })
 
 /**
@@ -112,17 +131,24 @@ async function transcribeWithWhisper(mediaPath) {
   }
 }
 
+function finalizePipelineTitles(arr, max) {
+  return arr
+    .map((s) => stripLeadInFromCandidate(String(s).trim()))
+    .filter((s) => s.length > 3 && !shouldDropMetaOnlyLine(s))
+    .slice(0, max)
+}
+
 function parseTitlesFromLlm(content) {
   const raw = content.trim()
   try {
     const parsed = JSON.parse(raw)
     if (Array.isArray(parsed)) {
-      return parsed.map(String).filter(Boolean).slice(0, 10)
+      return finalizePipelineTitles(parsed.map(String).filter(Boolean), 10)
     }
   } catch {
     /* fall through */
   }
-  return raw
+  const lines = raw
     .split('\n')
     .map((line) =>
       line
@@ -131,7 +157,7 @@ function parseTitlesFromLlm(content) {
         .trim(),
     )
     .filter((line) => line.length > 3)
-    .slice(0, 10)
+  return finalizePipelineTitles(lines, 10)
 }
 
 function parseTitlesOnlyPayload(content) {
@@ -141,15 +167,15 @@ function parseTitlesOnlyPayload(content) {
   try {
     const parsed = JSON.parse(raw)
     if (Array.isArray(parsed)) {
-      return parsed.map(String).filter(Boolean).slice(0, 5)
+      return finalizePipelineTitles(parsed.map(String).filter(Boolean), 5)
     }
     if (parsed && Array.isArray(parsed.titles)) {
-      return parsed.titles.map(String).filter(Boolean).slice(0, 5)
+      return finalizePipelineTitles(parsed.titles.map(String).filter(Boolean), 5)
     }
   } catch {
     /* fall through */
   }
-  return parseTitlesFromLlm(raw).slice(0, 5)
+  return finalizePipelineTitles(parseTitlesFromLlm(raw), 5)
 }
 
 async function ollamaPipelineChat(prompt, options = {}) {
@@ -223,8 +249,11 @@ Transcript excerpt (fact-check only; if summary and excerpt conflict, prefer sum
 ${transcriptExcerpt}
 ---
 
+${TITLE_FORMAT_LLM_BLOCK}
+
 Rules:
-- Exactly 5 distinct English titles.
+- Exactly 5 distinct English titles; each title should clearly follow ONE of the archetypes above.
+- Each title must be at most 10 words (count words; shorter is fine).
 - Encode structure (how-to, list, question, story, comparison, stakes) implied by the blocks above while describing real content from the summary.
 - Do not paste phrases from the TRENDING block literally; paraphrase structure only.`
 
@@ -465,6 +494,88 @@ export function createApp() {
       return res.status(500).json({ error: msg, hint })
     } finally {
       await fs.rm(uploadDir, { recursive: true, force: true }).catch(() => {})
+    }
+  })
+
+  /**
+   * Extract a segment with ffmpeg, persist under data/raw/clips, stream MP4 to client.
+   * Client uploads this File with schedule-upload (no server-side trim) — same path as main video.
+   */
+  app.post('/api/video/extract-segment', upload.single('video'), async (req, res) => {
+    let outPath
+    try {
+      const vid = req.file
+      if (!vid?.path) {
+        return res.status(400).json({ error: 'Missing file field "video"' })
+      }
+      let meta = {}
+      try {
+        meta = JSON.parse(req.body?.metadata || '{}')
+      } catch {
+        await fs.unlink(vid.path).catch(() => {})
+        return res.status(400).json({ error: 'Invalid metadata JSON' })
+      }
+      const start = Number(meta.trimStartSec)
+      const end = Number(meta.trimEndSec)
+      if (
+        !Number.isFinite(start) ||
+        !Number.isFinite(end) ||
+        end <= start + 0.05
+      ) {
+        await fs.unlink(vid.path).catch(() => {})
+        return res.status(400).json({
+          error:
+            'metadata.trimStartSec and trimEndSec must define a valid range (seconds)',
+        })
+      }
+      await fs.mkdir(CLIP_EXPORT_DIR, { recursive: true })
+      outPath = path.join(
+        CLIP_EXPORT_DIR,
+        `clip-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.mp4`,
+      )
+      const duration = end - start
+      await execFileAsync(
+        'ffmpeg',
+        [
+          '-y',
+          '-ss',
+          String(start),
+          '-i',
+          vid.path,
+          '-t',
+          String(duration),
+          '-c',
+          'copy',
+          '-movflags',
+          '+faststart',
+          outPath,
+        ],
+        { maxBuffer: 80 * 1024 * 1024, timeout: 900000 },
+      )
+      await fs.unlink(vid.path).catch(() => {})
+
+      const abs = path.resolve(outPath)
+      res.setHeader('Content-Type', 'video/mp4')
+      res.setHeader(
+        'Content-Disposition',
+        'attachment; filename="clip-segment.mp4"',
+      )
+      res.sendFile(abs, (err) => {
+        void fs.unlink(outPath).catch(() => {})
+        if (err) {
+          console.error('extract-segment sendFile:', err)
+          if (!res.headersSent) {
+            res.status(500).json({ error: 'Failed to send clip file' })
+          }
+        }
+      })
+    } catch (e) {
+      console.error(e)
+      if (outPath) await fs.unlink(outPath).catch(() => {})
+      if (req.file?.path) await fs.unlink(req.file.path).catch(() => {})
+      return res.status(500).json({
+        error: e instanceof Error ? e.message : String(e),
+      })
     }
   })
 
@@ -883,9 +994,9 @@ export function createApp() {
             .json({ error: 'Scheduled time must be in the future' })
         }
         const isShort = Boolean(meta.isShort)
-        let categoryId = Number(meta.categoryId)
-        if (!Number.isFinite(categoryId)) categoryId = 22
-        if (isShort) categoryId = 42
+        const selfDeclaredMadeForKids =
+          meta.selfDeclaredMadeForKids === true ||
+          meta.selfDeclaredMadeForKids === 'true'
 
         const tagList = [...tags]
         if (isShort && !tagList.some((t) => /shorts/i.test(t))) {
@@ -986,9 +1097,28 @@ export function createApp() {
           })
         }
 
+        /** Valid IDs from videoCategories.list — see youtubeCategoryIds.js */
+        let validCategoryIds = new Set([1, 22, 24, 42])
+        try {
+          validCategoryIds = await getYoutubeCategoryIdSet(
+            youtube,
+            process.env.YOUTUBE_REGION_CODE,
+          )
+        } catch (catErr) {
+          console.warn('youtube videoCategories.list failed, using fallback set:', catErr)
+        }
+        if (validCategoryIds.size === 0) {
+          validCategoryIds = new Set([1, 22, 23, 24, 25, 26, 42])
+        }
+        const categoryId = normalizeSnippetCategoryId(
+          validCategoryIds,
+          meta.categoryId,
+          isShort,
+        )
+
         const status = {
           privacyStatus: 'private',
-          selfDeclaredMadeForKids: false,
+          selfDeclaredMadeForKids,
           publishAt: publishAtIso,
         }
 
@@ -999,6 +1129,7 @@ export function createApp() {
               title: videoTitle,
               description,
               tags: tagList.slice(0, 500),
+              // YouTube expects string category id in snippet (see Data API examples)
               categoryId: String(categoryId),
             },
             status,
