@@ -1,0 +1,49 @@
+# Local Stable Diffusion WebUI checkout (not app source; huge)
+stable-diffusion-webui/
+
+# Large sample videos at repo root (GitHub file limits)
+/*.mp4
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# YouTube OAuth secrets (never commit)
+server/youtube.env
+.env
+server/.env
+
+# Local test clips
+.clip-test.mp4
+
+# Kaggle / large raw data
+data/raw/*.csv
+data/raw/*.zip
+models/model2-title-confidence/reports/
+models/model2-title-confidence/tests/_smoke_artifact.json
+models/model8-youtube-trending/artifacts/*.joblib
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

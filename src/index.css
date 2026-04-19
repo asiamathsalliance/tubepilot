@@ -1,0 +1,113 @@
+@import 'tailwindcss';
+
+@layer base {
+  button:not(:disabled),
+  [type='button']:not(:disabled),
+  [type='submit']:not(:disabled),
+  [type='reset']:not(:disabled),
+  a[href],
+  select,
+  summary {
+    cursor: pointer;
+  }
+  button:disabled,
+  [disabled] {
+    cursor: not-allowed;
+  }
+
+  body {
+    @apply m-0 min-h-screen antialiased text-base text-zinc-800 bg-zinc-100 dark:text-zinc-100 dark:bg-zinc-950;
+    font-family:
+      'Fredoka',
+      ui-rounded,
+      system-ui,
+      sans-serif;
+  }
+  #root {
+    @apply min-h-screen w-full;
+  }
+}
+
+@layer utilities {
+  .font-cartoon {
+    font-family:
+      'Fredoka',
+      ui-rounded,
+      system-ui,
+      sans-serif;
+  }
+
+  /** Neutral card + subtle depth; accent comes from hover/focus on controls */
+  .surface-3d {
+    @apply rounded-2xl border-2 border-zinc-300/90 bg-white shadow-[4px_4px_0_0_rgba(24,24,27,0.06)] dark:border-zinc-600 dark:bg-zinc-900 dark:shadow-[4px_4px_0_0_rgba(0,0,0,0.35)];
+  }
+
+  .surface-3d-inset {
+    @apply rounded-2xl border-2 border-zinc-200/90 bg-zinc-50/80 shadow-[inset_2px_2px_0_0_rgba(24,24,27,0.05)] dark:border-zinc-700 dark:bg-zinc-950/50 dark:shadow-[inset_2px_2px_0_0_rgba(0,0,0,0.2)];
+  }
+
+  .btn-3d {
+    @apply cursor-pointer rounded-xl border-2 border-zinc-300 bg-white font-medium text-zinc-800 shadow-[3px_3px_0_0_rgba(63,63,70,0.12)] transition hover:translate-y-0.5 hover:border-zinc-400 hover:bg-zinc-50 hover:shadow-[2px_2px_0_0_rgba(63,63,70,0.14)] active:translate-y-1 active:shadow-none disabled:cursor-not-allowed dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:shadow-[3px_3px_0_0_rgba(0,0,0,0.4)] dark:hover:border-orange-500/80 dark:hover:bg-zinc-800 dark:hover:shadow-[2px_2px_0_0_rgba(234,88,12,0.2)];
+  }
+
+  .btn-3d-accent {
+    @apply cursor-pointer rounded-xl border-2 border-orange-500 bg-orange-500 font-medium text-white shadow-[3px_3px_0_0_rgba(234,88,12,0.35)] transition hover:translate-y-0.5 hover:border-orange-600 hover:bg-orange-600 hover:shadow-[2px_2px_0_0_rgba(234,88,12,0.45)] active:translate-y-1 active:shadow-none disabled:cursor-not-allowed dark:border-orange-600 dark:bg-orange-600 dark:hover:border-orange-500 dark:hover:bg-orange-500;
+  }
+
+  /** Dashboard project row — same “press” + orange offset shadow as btn-3d-accent; forced orange glow on hover */
+  .surface-3d-dashboard-project {
+    @apply rounded-2xl border-2 border-zinc-300/90 bg-white shadow-[4px_4px_0_0_rgba(24,24,27,0.06)] transition-[transform,box-shadow,border-color,background-color] duration-200 dark:border-zinc-600 dark:bg-zinc-900 dark:shadow-[4px_4px_0_0_rgba(0,0,0,0.35)];
+  }
+  .surface-3d-dashboard-project:hover {
+    @apply translate-y-0.5 border-orange-500 bg-orange-50/85 shadow-[3px_3px_0_0_rgba(234,88,12,0.48),0_14px_32px_-6px_rgba(234,88,12,0.38),0_0_0_1px_rgba(234,88,12,0.12)] dark:border-orange-500 dark:bg-orange-950/40 dark:shadow-[3px_3px_0_0_rgba(234,88,12,0.42),0_14px_36px_-6px_rgba(234,88,12,0.32),0_0_0_1px_rgba(234,88,12,0.2)];
+  }
+  .surface-3d-dashboard-project:active {
+    @apply translate-y-1 shadow-[2px_2px_0_0_rgba(234,88,12,0.35)] dark:shadow-[2px_2px_0_0_rgba(234,88,12,0.3)];
+  }
+
+  .label-lg {
+    @apply text-base font-semibold text-zinc-800 dark:text-zinc-100;
+  }
+
+  .input-field {
+    @apply w-full rounded-xl border-2 border-zinc-300 bg-white px-4 py-3 text-base text-black outline-none transition placeholder:text-zinc-400 focus:border-orange-500 focus:ring-2 focus:ring-orange-400/35 dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:border-orange-500;
+  }
+
+  /** Video basic info — left column field groups: gray idle, orange when panel is active */
+  .vb-field-panel {
+    @apply rounded-2xl border-2 border-zinc-300 bg-zinc-100/70 p-4 shadow-[4px_4px_0_0_rgba(82,82,91,0.14)] transition-[border-color,box-shadow,background-color] dark:border-zinc-600 dark:bg-zinc-900/70 dark:shadow-[4px_4px_0_0_rgba(0,0,0,0.38)];
+  }
+
+  /** Light green when the user has edited content; orange selection wins when focused */
+  .vb-field-panel--edited:not(.vb-field-panel--selected) {
+    @apply border-emerald-400/85 bg-emerald-50/50 shadow-[5px_5px_0_0_rgba(16,185,129,0.22)] dark:border-emerald-600/65 dark:bg-emerald-950/30 dark:shadow-[5px_5px_0_0_rgba(16,185,129,0.18)];
+  }
+
+  .vb-field-panel--selected {
+    @apply border-orange-500 bg-white shadow-[6px_6px_0_0_rgba(234,88,12,0.4)] dark:border-orange-500 dark:bg-zinc-950 dark:shadow-[6px_6px_0_0_rgba(234,88,12,0.35)];
+  }
+
+  .workflow-nav-btn {
+    @apply inline-flex cursor-pointer items-center justify-center rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-sm font-medium text-zinc-700 shadow-sm transition hover:border-zinc-400 hover:bg-white hover:text-zinc-900 active:scale-[0.98] dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-orange-500/70 dark:hover:bg-zinc-800;
+  }
+
+  .workflow-nav-btn-primary {
+    @apply inline-flex cursor-pointer items-center justify-center rounded-lg border border-orange-600 bg-orange-600 px-3 py-1.5 text-sm font-semibold text-white shadow-[2px_2px_0_0_rgba(234,88,12,0.35)] transition hover:border-orange-700 hover:bg-orange-700 hover:shadow-[1px_1px_0_0_rgba(234,88,12,0.4)] active:scale-[0.98] dark:border-orange-600 dark:bg-orange-600 dark:hover:bg-orange-500;
+  }
+
+  .thumb-gen-card {
+    opacity: 0;
+    animation: thumb-gen-in 0.5s ease-out forwards;
+  }
+}
+
+@keyframes thumb-gen-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

@@ -1,0 +1,6 @@
+video_id,trending_date,title,channel_title,category_id,publish_time,tags,views,likes,dislikes,comment_count
+v1,2017-11-01,Best gaming tips for beginners tonight,Ch1,20,2017-11-01T10:00:00.000Z,gaming|tips|fortnite,5000000,100000,500,8000
+v2,2017-11-02,Fortnite tutorial epic wins daily,Ch2,20,2017-11-02T10:00:00.000Z,gaming|fortnite,4200000,90000,600,7000
+v3,2017-11-03,Music video official release 2024,Ch3,10,2017-11-03T14:00:00.000Z,music|official,8000000,200000,400,12000
+v4,2017-11-04,Comedy sketch hilarious moment,Ch4,23,2017-11-04T09:00:00.000Z,comedy|funny,3000000,80000,300,5000
+v5,2017-11-05,Education math explained simply,Ch5,27,2017-11-05T11:00:00.000Z,education|math,2500000,70000,200,4000

@@ -1,0 +1,42 @@
+{
+  "name": "info-clipfarm",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:server": "npm run dev --prefix server",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "test": "node --test server/scoreTitle.test.js",
+    "test:train": "python3 models/model2-title-confidence/tests/test_train_smoke.py",
+    "train:model2": "python3 models/model2-title-confidence/scripts/train.py --data-dir data/raw",
+    "train:model2:fixture": "python3 models/model2-title-confidence/scripts/train.py --fixture models/model2-title-confidence/tests/fixtures/sample_trending.csv",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
+    "date-fns-tz": "^3.2.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-router-dom": "^7.14.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@tailwindcss/vite": "^4.2.2",
+    "@types/node": "^24.12.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "concurrently": "^9.2.1",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.4.0",
+    "tailwindcss": "^4.2.2",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.58.0",
+    "vite": "^8.0.4"
+  }
+}

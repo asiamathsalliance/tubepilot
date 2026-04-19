@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "target": "log1p(view_count)",
+  "features": [
+    "title_char_len",
+    "title_word_count",
+    "tag_count",
+    "publish_hour",
+    "publish_dow",
+    "days_publish_to_trending",
+    "category_id"
+  ],
+  "metrics": {
+    "valMaeLog": 0.009138880137189886,
+    "valR2Log": null,
+    "valMaeViewsApprox": 38208.44857155299
+  },
+  "trainingNotes": {
+    "source": "models/model8-youtube-trending/tests/fixtures/minimal_us_trending.csv",
+    "rows": 5
+  },
+  "modelPath": "model8.joblib"
+}
